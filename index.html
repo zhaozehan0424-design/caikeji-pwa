@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+  <meta name="theme-color" content="#183d54">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="材科记">
+  <title>材科记 - 材料科学基础题库</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i data-lucide="atom"></i></span>
+        <span class="brand-copy">
+          <strong>材科记</strong>
+          <small>Materials Recall</small>
+        </span>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item is-active" type="button" data-view="study">
+          <i data-lucide="brain"></i><span>今日学习</span>
+        </button>
+        <button class="nav-item" type="button" data-view="bank">
+          <i data-lucide="list-checks"></i><span>全量题库</span>
+        </button>
+        <button class="nav-item" type="button" data-view="knowledge">
+          <i data-lucide="library-big"></i><span>知识背诵</span>
+        </button>
+        <button class="nav-item" type="button" data-view="wrong">
+          <i data-lucide="triangle-alert"></i><span>错题本</span>
+          <span class="nav-count" id="wrong-count">0</span>
+        </button>
+        <button class="nav-item" type="button" data-view="stats">
+          <i data-lucide="chart-no-axes-column-increasing"></i><span>学习统计</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-progress">
+        <div class="sidebar-progress-head">
+          <span>总掌握度</span><strong id="sidebar-mastery">0%</strong>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span id="sidebar-progress-bar"></span></div>
+        <small id="sidebar-progress-copy">0 / 291</small>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="course-heading">
+          <span class="course-kicker">金属材料工程24级</span>
+          <strong>材料科学基础</strong>
+        </div>
+        <div class="topbar-actions">
+          <div class="today-counter" title="今日已完成">
+            <i data-lucide="flame"></i>
+            <span id="today-count">0</span>
+          </div>
+          <button class="icon-button" id="new-session-button" type="button" title="重新生成今日题组" aria-label="重新生成今日题组">
+            <i data-lucide="rotate-cw"></i>
+          </button>
+        </div>
+      </header>
+
+      <div id="view-root" class="view-root" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="data.js"></script>
+  <script src="assets/lucide.min.js"></script>
+  <script src="native.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
