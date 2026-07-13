@@ -37,6 +37,7 @@
     index: 0,
     revealed: false,
     objectiveCorrect: null,
+    subjectiveFeedback: null,
     selected: new Set(),
     drafts: {},
     sessionStats: { forgot: 0, fuzzy: 0, mastered: 0 },
@@ -224,6 +225,7 @@
     runtime.index = 0;
     runtime.revealed = false;
     runtime.objectiveCorrect = null;
+    runtime.subjectiveFeedback = null;
     runtime.selected = new Set();
     runtime.sessionStats = { forgot: 0, fuzzy: 0, mastered: 0 };
     render();
@@ -298,6 +300,115 @@
     return [...left].every((value) => right.has(value));
   }
 
+  function normalizeMatchText(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^\u4e00-\u9fffA-Za-z0-9α-ωΑ-Ω]+/g, "");
+  }
+
+  function characterBigrams(value) {
+    const normalized = normalizeMatchText(value);
+    if (normalized.length < 2) return normalized ? [normalized] : [];
+    const result = [];
+    for (let index = 0; index < normalized.length - 1; index += 1) {
+      result.push(normalized.slice(index, index + 2));
+    }
+    return [...new Set(result)];
+  }
+
+  function pointTerms(value) {
+    const stopTerms = new Set([
+      "定义",
+      "条件",
+      "特点",
+      "性质",
+      "作用",
+      "结果",
+      "对象",
+      "机制",
+      "过程",
+      "要求",
+      "内容",
+      "材料",
+      "一个",
+      "一种",
+      "可以",
+      "通常",
+      "主要",
+    ]);
+    const core = String(value || "").replace(/^[^：:]{1,10}[：:]/, "");
+    return core
+      .split(/[\s，,。；;：:、（）()\/+=→-]+|以及|并且|或者|同时|从而|因此|属于|形成|发生|通过|和|与|及|或/g)
+      .map((term) => normalizeMatchText(term))
+      .filter((term) => term.length >= 2 && !stopTerms.has(term));
+  }
+
+  function scoreAnswerPoint(answerPoint, response) {
+    const target = normalizeMatchText(String(answerPoint || "").replace(/^[^：:]{1,10}[：:]/, ""));
+    const responseText = normalizeMatchText(response);
+    if (!target || !responseText) return { status: "missed", matchedTerms: [] };
+    if (responseText.includes(target)) return { status: "covered", matchedTerms: [target] };
+
+    const terms = pointTerms(answerPoint);
+    const matchedTerms = terms.filter((term) => responseText.includes(term));
+    const targetBigrams = characterBigrams(target);
+    const responseBigrams = new Set(characterBigrams(responseText));
+    const overlap = targetBigrams.filter((gram) => responseBigrams.has(gram)).length;
+    const recall = targetBigrams.length ? overlap / targetBigrams.length : 0;
+
+    if (matchedTerms.length >= 2 || recall >= 0.48) return { status: "covered", matchedTerms };
+    if (matchedTerms.length >= 1 || recall >= 0.18) return { status: "partial", matchedTerms };
+    return { status: "missed", matchedTerms: [] };
+  }
+
+  function evaluateSubjectiveAnswer(question, response) {
+    const points = question.answerPoints.length ? question.answerPoints : [question.answerText];
+    const results = points.filter(Boolean).map((point) => ({ point, ...scoreAnswerPoint(point, response) }));
+    const covered = results.filter((item) => item.status === "covered").length;
+    const partial = results.filter((item) => item.status === "partial").length;
+    const missed = results.filter((item) => item.status === "missed").length;
+    const weighted = covered + partial * 0.5;
+    const ratio = results.length ? weighted / results.length : 0;
+    const tone = ratio >= 0.85 ? "good" : ratio >= 0.45 ? "partial" : "weak";
+    const summary = `完整 ${covered} 项，部分 ${partial} 项，待补充 ${missed} 项`;
+    return { results, covered, partial, missed, tone, summary };
+  }
+
+  function optionAnswerText(question, labels) {
+    const options = new Map(question.options.map((option) => [option.label, option.text]));
+    return labels.map((label) => `${label}. ${options.get(label) || ""}`.trim()).join("；");
+  }
+
+  function submissionFeedbackHtml(question) {
+    if (isObjective(question)) {
+      const correct = Boolean(runtime.objectiveCorrect);
+      return `
+        <div class="submission-feedback is-${correct ? "good" : "weak"}">
+          <div class="feedback-heading"><i data-lucide="${correct ? "circle-check-big" : "circle-x"}"></i><strong>${correct ? "判定正确" : "判定错误"}</strong></div>
+          <div class="objective-feedback-grid">
+            <span>你的答案</span><strong>${escapeHtml(optionAnswerText(question, [...runtime.selected]))}</strong>
+            <span>正确答案</span><strong>${escapeHtml(optionAnswerText(question, question.correctLabels))}</strong>
+          </div>
+        </div>`;
+    }
+
+    const feedback = runtime.subjectiveFeedback;
+    if (!feedback) return "";
+    const iconByStatus = { covered: "circle-check", partial: "circle-dot", missed: "circle-dashed" };
+    const labelByStatus = { covered: "完整覆盖", partial: "部分覆盖", missed: "待补充" };
+    return `
+      <div class="submission-feedback is-${feedback.tone}">
+        <div class="feedback-heading"><i data-lucide="scan-search"></i><strong>得分点反馈</strong><span>${escapeHtml(feedback.summary)}</span></div>
+        <ul class="feedback-point-list">
+          ${feedback.results
+            .map(
+              (item, index) => `<li class="is-${item.status}"><i data-lucide="${iconByStatus[item.status]}"></i><span><strong>得分点 ${index + 1} · ${labelByStatus[item.status]}</strong><small>${textHtml(item.point)}</small></span></li>`,
+            )
+            .join("")}
+        </ul>
+      </div>`;
+  }
+
   function questionImagesHtml(question, modal = false) {
     if (!question.images.length) return "";
     return `<div class="question-media ${modal ? "is-modal" : ""}">${question.images
@@ -341,6 +452,10 @@
       statusClass = runtime.objectiveCorrect ? "is-correct" : "is-wrong";
       statusIcon = runtime.objectiveCorrect ? "circle-check-big" : "circle-x";
       statusText = runtime.objectiveCorrect ? "回答正确" : "回答错误";
+    } else if (runtime.subjectiveFeedback) {
+      statusClass = runtime.subjectiveFeedback.tone === "good" ? "is-correct" : runtime.subjectiveFeedback.tone === "weak" ? "is-wrong" : "is-partial";
+      statusIcon = runtime.subjectiveFeedback.tone === "good" ? "circle-check-big" : runtime.subjectiveFeedback.tone === "weak" ? "circle-alert" : "circle-dot";
+      statusText = runtime.subjectiveFeedback.summary;
     }
     const answerContent = question.answerPoints.length > 1
       ? `<ul class="answer-points">${question.answerPoints.map((point) => `<li>${textHtml(point)}</li>`).join("")}</ul>`
@@ -351,6 +466,7 @@
     return `
       <div class="answer-reveal">
         <div class="answer-status ${statusClass}"><i data-lucide="${statusIcon}"></i><span>${statusText}</span></div>
+        ${submissionFeedbackHtml(question)}
         <div class="answer-section">
           <h3 class="answer-title"><i data-lucide="check-check"></i>参考答案</h3>
           ${answerContent}
@@ -466,8 +582,9 @@
               runtime.revealed
                 ? ""
                 : `<div class="question-actions">
-                    <div class="question-actions-main">
-                      <button class="primary-button" type="button" data-action="reveal-answer"><i data-lucide="${objective ? "send" : "eye"}"></i>${objective ? "提交答案" : "查看答案"}</button>
+                    <div class="question-actions-main ${objective ? "" : "has-secondary"}">
+                      <button class="primary-button" type="button" data-action="reveal-answer"><i data-lucide="send"></i>${objective ? "提交答案" : "提交作答"}</button>
+                      ${objective ? "" : '<button class="secondary-button" type="button" data-action="show-answer"><i data-lucide="eye"></i>直接看答案</button>'}
                       <button class="icon-button" type="button" data-action="skip-question" title="稍后再做" aria-label="稍后再做"><i data-lucide="arrow-right"></i></button>
                     </div>
                     <span class="section-subtitle">${escapeHtml(question.sourceText || question.source)}</span>
@@ -519,7 +636,22 @@
         state.wrong.push(question.id);
         saveState();
       }
+    } else {
+      const response = String(runtime.drafts[question.id] || "").trim();
+      if (!response) {
+        showToast("请先输入答案");
+        return;
+      }
+      runtime.subjectiveFeedback = evaluateSubjectiveAnswer(question, response);
     }
+    runtime.revealed = true;
+    render();
+  }
+
+  function showAnswer() {
+    const question = currentQuestion();
+    if (!question || runtime.revealed || isObjective(question)) return;
+    runtime.subjectiveFeedback = null;
     runtime.revealed = true;
     render();
   }
@@ -575,6 +707,7 @@
     runtime.index += 1;
     runtime.revealed = false;
     runtime.objectiveCorrect = null;
+    runtime.subjectiveFeedback = null;
     runtime.selected = new Set();
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -592,6 +725,7 @@
     }
     runtime.revealed = false;
     runtime.objectiveCorrect = null;
+    runtime.subjectiveFeedback = null;
     runtime.selected = new Set();
     render();
   }
@@ -1027,6 +1161,7 @@
     if (!target) return;
     const action = target.dataset.action;
     if (action === "reveal-answer") revealAnswer();
+    if (action === "show-answer") showAnswer();
     if (action === "rate-question") rateCurrentQuestion(Number(target.dataset.rating));
     if (action === "skip-question") skipQuestion();
     if (action === "queue-jump") skipQuestion(Number(target.dataset.offset));
@@ -1148,6 +1283,7 @@
       rateCurrentQuestion(Number(event.key) - 1);
     }
     if (!runtime.revealed && event.key === "Enter" && !event.target.matches("textarea")) revealAnswer();
+    if (!runtime.revealed && event.key === "Enter" && event.target.matches("textarea") && (event.ctrlKey || event.metaKey)) revealAnswer();
   });
 
   createSession("mixed");

@@ -721,6 +721,122 @@ svg {
   color: var(--red);
 }
 
+.answer-status.is-partial {
+  color: var(--amber);
+}
+
+.submission-feedback {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  background: var(--surface-soft);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.submission-feedback.is-good {
+  background: var(--green-soft);
+  border-left-color: var(--green);
+}
+
+.submission-feedback.is-partial {
+  background: var(--amber-soft);
+  border-left-color: var(--amber);
+}
+
+.submission-feedback.is-weak {
+  background: var(--red-soft);
+  border-left-color: var(--red);
+}
+
+.feedback-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 10px;
+  color: var(--navy);
+}
+
+.feedback-heading svg {
+  width: 17px;
+  height: 17px;
+}
+
+.feedback-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.objective-feedback-grid {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 7px 12px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(24, 61, 84, 0.12);
+}
+
+.objective-feedback-grid span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.objective-feedback-grid strong {
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+.feedback-point-list {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid rgba(24, 61, 84, 0.12);
+  list-style: none;
+}
+
+.feedback-point-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.feedback-point-list li > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+}
+
+.feedback-point-list li.is-covered > svg {
+  color: var(--green);
+}
+
+.feedback-point-list li.is-partial > svg {
+  color: var(--amber);
+}
+
+.feedback-point-list li.is-missed > svg {
+  color: var(--red);
+}
+
+.feedback-point-list strong,
+.feedback-point-list small {
+  display: block;
+}
+
+.feedback-point-list strong {
+  color: var(--navy);
+  font-size: 11px;
+}
+
+.feedback-point-list small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
 .answer-section {
   padding: 14px 0;
   border-bottom: 1px solid #e6ebed;
@@ -1855,6 +1971,10 @@ button.queue-item {
   .question-actions-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 44px;
+  }
+
+  .question-actions-main.has-secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 44px;
   }
 
   .rating-buttons {
