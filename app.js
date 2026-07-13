@@ -264,6 +264,12 @@
     return [...new Set([...state.wrong, ...historicalWrongIds()])].filter((id) => questionMap.has(id));
   }
 
+  function markQuestionWrong(id) {
+    if (state.wrong.includes(id)) return false;
+    state.wrong.push(id);
+    return true;
+  }
+
   function updateShell() {
     document.querySelectorAll(".nav-item").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === runtime.view);
@@ -472,7 +478,7 @@
       const correct = Boolean(runtime.objectiveCorrect);
       return `
         <div class="submission-feedback is-${correct ? "good" : "weak"}">
-          <div class="feedback-heading"><i data-lucide="${correct ? "circle-check-big" : "circle-x"}"></i><strong>${correct ? "判定正确" : "判定错误"}</strong></div>
+          <div class="feedback-heading"><i data-lucide="${correct ? "circle-check-big" : "circle-x"}"></i><strong>${correct ? "判定正确" : "判定错误"}</strong>${correct ? "" : "<span>已自动加入错题本</span>"}</div>
           <div class="objective-feedback-grid">
             <span>你的答案</span><strong>${escapeHtml(optionAnswerText(question, [...runtime.selected]))}</strong>
             <span>正确答案</span><strong>${escapeHtml(optionAnswerText(question, question.correctLabels))}</strong>
@@ -486,7 +492,7 @@
     const labelByStatus = { covered: "完整覆盖", partial: "部分覆盖", missed: "待补充" };
     return `
       <div class="submission-feedback is-${feedback.tone}">
-        <div class="feedback-heading"><i data-lucide="scan-search"></i><strong>得分点反馈</strong><span>${escapeHtml(feedback.summary)}</span></div>
+        <div class="feedback-heading"><i data-lucide="scan-search"></i><strong>${feedback.tone === "weak" ? "回答错误" : "得分点反馈"}</strong><span>${escapeHtml(feedback.summary)}${feedback.tone === "weak" ? " · 已自动加入错题本" : ""}</span></div>
         <ul class="feedback-point-list">
           ${feedback.results
             .map(
@@ -713,6 +719,8 @@
   function revealAnswer() {
     const question = currentQuestion();
     if (!question || runtime.revealed) return;
+    let judgedWrong = false;
+    let addedToWrong = false;
     if (isObjective(question)) {
       if (!runtime.selected.size) {
         showToast("请先选择答案");
@@ -720,9 +728,9 @@
       }
       runtime.objectiveCorrect = setsEqual(runtime.selected, new Set(question.correctLabels));
       window.CaikejiNative?.answer(runtime.objectiveCorrect);
-      if (!runtime.objectiveCorrect && !state.wrong.includes(question.id)) {
-        state.wrong.push(question.id);
-        saveState();
+      judgedWrong = !runtime.objectiveCorrect;
+      if (judgedWrong) {
+        addedToWrong = markQuestionWrong(question.id);
       }
     } else {
       const response = String(runtime.drafts[question.id] || "").trim();
@@ -731,9 +739,15 @@
         return;
       }
       runtime.subjectiveFeedback = evaluateSubjectiveAnswer(question, response);
+      judgedWrong = runtime.subjectiveFeedback.tone === "weak";
+      if (judgedWrong) {
+        addedToWrong = markQuestionWrong(question.id);
+      }
     }
+    if (addedToWrong) saveState();
     runtime.revealed = true;
     render();
+    if (judgedWrong) showToast(addedToWrong ? "回答错误，已自动加入错题本" : "回答错误，本题已在错题本");
   }
 
   function showAnswer() {
@@ -762,7 +776,7 @@
       review.correctStreak = 0;
       review.wrongCount += 1;
       review.nextDue = dateKey();
-      if (!knowledge && !state.wrong.includes(id)) state.wrong.push(id);
+      if (!knowledge) markQuestionWrong(id);
     } else if (rating === 1) {
       review.level = Math.max(1, review.level);
       review.interval = 1;
