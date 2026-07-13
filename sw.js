@@ -1,4 +1,4 @@
-const CACHE_NAME = "materials-recall-v5";
+const CACHE_NAME = "materials-recall-v6";
 const CORE_FILES = [
   "./",
   "./index.html",

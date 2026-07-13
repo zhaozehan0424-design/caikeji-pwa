@@ -179,7 +179,8 @@
 
   function sourceMatch(question, mode) {
     if (mode === "original") return question.source === "平台原题";
-    if (mode === "subjective") return question.source !== "平台原题";
+    if (mode === "subjective") return question.source === "填空简答专项";
+    if (mode === "definition") return question.source === "定义强化专项";
     return true;
   }
 
@@ -383,6 +384,7 @@
               ["mixed", "混合"],
               ["original", "原题"],
               ["subjective", "专项"],
+              ["definition", "定义"],
             ]
               .map(
                 ([mode, label]) => `<button class="segment-button ${runtime.queueMode === mode ? "is-active" : ""}" type="button" data-action="set-session-mode" data-mode="${mode}">${label}</button>`,
@@ -629,7 +631,8 @@
     const search = filters.search.trim().toLowerCase();
     return DATA.questions.filter((question) => {
       if (filters.source === "platform" && question.source !== "平台原题") return false;
-      if (filters.source === "subjective" && question.source === "平台原题") return false;
+      if (filters.source === "subjective" && question.source !== "填空简答专项") return false;
+      if (filters.source === "definition" && question.source !== "定义强化专项") return false;
       if (filters.chapter !== "all" && question.chapter !== filters.chapter) return false;
       if (filters.type !== "all" && question.type !== filters.type) return false;
       if (filters.status !== "all" && questionStatus(question.id) !== filters.status) return false;
@@ -673,7 +676,7 @@
     root.innerHTML = `
       <section class="view-section">
         <header class="section-head">
-          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">平台原题、填空专项与简答专项统一检索</p></div>
+          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">平台原题、填空简答专项与定义强化专项统一检索</p></div>
           <button class="primary-button" type="button" data-action="start-filtered"><i data-lucide="play"></i>练习筛选结果</button>
         </header>
         <div class="metric-strip">
@@ -681,6 +684,7 @@
           <div class="metric-block"><strong>${DATA.stats.originalQuestions}</strong><span>平台原题</span></div>
           <div class="metric-block"><strong>${DATA.stats.fillQuestions}</strong><span>填空专项</span></div>
           <div class="metric-block"><strong>${DATA.stats.shortQuestions}</strong><span>简答与作图</span></div>
+          <div class="metric-block"><strong>${DATA.stats.definitionQuestions}</strong><span>定义强化</span></div>
         </div>
         <div class="filter-bar">
           <label class="search-field"><i data-lucide="search"></i><input id="bank-search" type="search" value="${escapeHtml(runtime.bank.search)}" placeholder="搜索题目、答案或考点"></label>
@@ -688,6 +692,7 @@
             <option value="all">全部来源</option>
             <option value="platform" ${runtime.bank.source === "platform" ? "selected" : ""}>平台原题</option>
             <option value="subjective" ${runtime.bank.source === "subjective" ? "selected" : ""}>填空简答专项</option>
+            <option value="definition" ${runtime.bank.source === "definition" ? "selected" : ""}>定义强化专项</option>
           </select>
           <select class="filter-select" data-filter="chapter">${selectOptionsHtml(chapterNames, runtime.bank.chapter, "全部章节")}</select>
           <select class="filter-select" data-filter="type">${selectOptionsHtml(typeNames, runtime.bank.type, "全部题型")}</select>
