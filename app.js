@@ -343,6 +343,94 @@
       .filter((term) => term.length >= 2 && !stopTerms.has(term));
   }
 
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function importantTermsFor(question) {
+    const genericTerms = new Set([
+      "材料",
+      "结构",
+      "性能",
+      "过程",
+      "影响",
+      "定义",
+      "条件",
+      "特点",
+      "结果",
+      "作用",
+      "机制",
+      "第一章",
+      "第二章",
+      "第三章",
+      "第四章",
+      "第五章",
+      "第六章",
+      "第七章",
+    ]);
+    const relatedNames = (question?.knowledgeIds || []).map((id) => knowledgeMap.get(id)?.name).filter(Boolean);
+    const answerTerms = (question?.answerPoints || []).flatMap((point) => pointTerms(point));
+    const terms = [...(question?.tags || []), ...relatedNames, ...answerTerms]
+      .map((term) => String(term).trim())
+      .filter((term) => term.length >= 2 && term.length <= 18 && !genericTerms.has(term));
+    return [...new Set(terms)].sort((left, right) => right.length - left.length).slice(0, 24);
+  }
+
+  function emphasizedTextHtml(value, question = null) {
+    const source = String(value ?? "");
+    if (!source) return "";
+
+    const ruleTerms = ["必须", "不能", "不是", "不得", "只有", "相反", "错误", "正确", "低于", "高于", "等于", "不等于", "至少", "至多", "最大", "最小", "优先", "关键", "注意", "易混"];
+    const labelTerms = ["定义", "条件", "机制", "结果", "作用", "特点", "本质", "判据", "公式", "组成", "性能", "范围", "对象", "前提", "趋势", "区别", "来源", "用途"];
+    const formulaTerms = [
+      "D=D0exp(-Q/RT)",
+      "J=-D·dc/dx",
+      "τ=σcosφcosλ",
+      "F=C-P+1",
+      "√3a/4",
+      "Σb²",
+      "τb²",
+      "τ/b",
+      "τb",
+      "Fe3C",
+      "α-Fe",
+      "γ-Fe",
+      "δ-Fe",
+      "{111}",
+      "<110>",
+      "<111>",
+      "(111)",
+    ];
+    const dynamicTerms = importantTermsFor(question);
+    const formulaPattern = "[A-Za-zα-ωΑ-Ω][A-Za-z0-9α-ωΑ-Ω_]*(?:\\s*[=≈<>→]\\s*)[^，。；;\\n]{1,32}";
+    const numberPattern = "\\d+(?:\\.\\d+)?\\s*(?:%|℃|K|nm|MPa|GPa|个|种|大)?";
+    const formulaTermPattern = formulaTerms.map(escapeRegExp).join("|");
+    const labelPattern = `(?:${labelTerms.map(escapeRegExp).join("|")})(?=[：:])`;
+    const rulePattern = ruleTerms.map(escapeRegExp).join("|");
+    const dynamicPattern = dynamicTerms.length ? dynamicTerms.map(escapeRegExp).join("|") : "(?!)";
+    const pattern = new RegExp(`(${formulaTermPattern}|${formulaPattern}|${numberPattern}|${labelPattern}|${rulePattern}|${dynamicPattern})`, "gi");
+    const ruleSet = new Set(ruleTerms);
+    const labelSet = new Set(labelTerms);
+    const formulaSet = new Set(formulaTerms.map((term) => term.toLowerCase()));
+    let cursor = 0;
+    let result = "";
+    let match = pattern.exec(source);
+    while (match) {
+      const token = match[0];
+      result += escapeHtml(source.slice(cursor, match.index));
+      let className = "is-term";
+      if (formulaSet.has(token.toLowerCase())) className = "is-data";
+      else if (ruleSet.has(token)) className = "is-rule";
+      else if (labelSet.has(token)) className = "is-label";
+      else if (/\d|[=≈<>→]/.test(token)) className = "is-data";
+      result += `<mark class="key-highlight ${className}">${escapeHtml(token)}</mark>`;
+      cursor = match.index + token.length;
+      match = pattern.exec(source);
+    }
+    result += escapeHtml(source.slice(cursor));
+    return result.replaceAll("\n", "<br>");
+  }
+
   function scoreAnswerPoint(answerPoint, response) {
     const target = normalizeMatchText(String(answerPoint || "").replace(/^[^：:]{1,10}[：:]/, ""));
     const responseText = normalizeMatchText(response);
@@ -402,7 +490,7 @@
         <ul class="feedback-point-list">
           ${feedback.results
             .map(
-              (item, index) => `<li class="is-${item.status}"><i data-lucide="${iconByStatus[item.status]}"></i><span><strong>得分点 ${index + 1} · ${labelByStatus[item.status]}</strong><small>${textHtml(item.point)}</small></span></li>`,
+              (item, index) => `<li class="is-${item.status}"><i data-lucide="${iconByStatus[item.status]}"></i><span><strong>得分点 ${index + 1} · ${labelByStatus[item.status]}</strong><small>${emphasizedTextHtml(item.point, question)}</small></span></li>`,
             )
             .join("")}
         </ul>
@@ -458,8 +546,8 @@
       statusText = runtime.subjectiveFeedback.summary;
     }
     const answerContent = question.answerPoints.length > 1
-      ? `<ul class="answer-points">${question.answerPoints.map((point) => `<li>${textHtml(point)}</li>`).join("")}</ul>`
-      : `<p class="answer-text">${textHtml(question.answerText)}</p>`;
+      ? `<ul class="answer-points">${question.answerPoints.map((point) => `<li>${emphasizedTextHtml(point, question)}</li>`).join("")}</ul>`
+      : `<p class="answer-text">${emphasizedTextHtml(question.answerText, question)}</p>`;
     const warning = question.platformSuspect
       ? `<div class="answer-section"><h3 class="answer-title"><i data-lucide="badge-alert"></i>教材校正</h3><p class="answer-text">本题存在平台错键、冲突或表述问题，当前答案已按教材结论整理。</p></div>`
       : "";
@@ -473,7 +561,7 @@
         </div>
         <div class="answer-section">
           <h3 class="answer-title"><i data-lucide="scan-text"></i>解析</h3>
-          <p class="answer-text">${textHtml(question.analysis)}</p>
+          <p class="answer-text">${emphasizedTextHtml(question.analysis, question)}</p>
         </div>
         ${warning}
         <div class="rating-panel">
@@ -574,7 +662,7 @@
               </div>
               <button class="icon-button ${favorite ? "is-active" : ""}" type="button" data-action="toggle-favorite" data-id="${question.id}" title="${favorite ? "取消收藏" : "收藏"}" aria-label="${favorite ? "取消收藏" : "收藏"}"><i data-lucide="star"></i></button>
             </div>
-            <h1 class="question-prompt">${textHtml(question.prompt)}</h1>
+            <h1 class="question-prompt">${emphasizedTextHtml(question.prompt, question)}</h1>
             ${questionImagesHtml(question)}
             ${input}
             ${runtime.revealed ? answerHtml(question) : ""}
@@ -878,11 +966,11 @@
               <span class="meta-label">${escapeHtml(shortChapter(question.chapter))}</span>
               ${question.platformSuspect ? '<span class="status-pill is-learning">教材校正</span>' : ""}
             </div>
-            <h2 class="modal-prompt">${textHtml(question.prompt)}</h2>
+            <h2 class="modal-prompt">${emphasizedTextHtml(question.prompt, question)}</h2>
             ${questionImagesHtml(question, true)}
             ${options}
-            <div class="answer-section"><h3 class="answer-title"><i data-lucide="check-check"></i>参考答案</h3><p class="answer-text">${textHtml(question.answerText)}</p></div>
-            <div class="answer-section"><h3 class="answer-title"><i data-lucide="scan-text"></i>解析</h3><p class="answer-text">${textHtml(question.analysis)}</p></div>
+            <div class="answer-section"><h3 class="answer-title"><i data-lucide="check-check"></i>参考答案</h3><p class="answer-text">${emphasizedTextHtml(question.answerText, question)}</p></div>
+            <div class="answer-section"><h3 class="answer-title"><i data-lucide="scan-text"></i>解析</h3><p class="answer-text">${emphasizedTextHtml(question.analysis, question)}</p></div>
             <div class="tag-list">${question.tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>
           </div>
           <footer class="modal-footer">
@@ -972,7 +1060,7 @@
             ${
               runtime.knowledge.revealed
                 ? `<div class="knowledge-back">
-                    <ul class="knowledge-notes">${summary.map((note) => `<li>${textHtml(note)}</li>`).join("")}</ul>
+                    <ul class="knowledge-notes">${summary.map((note) => `<li>${emphasizedTextHtml(note, { tags: [point.name], knowledgeIds: [point.id], answerPoints: [] })}</li>`).join("")}</ul>
                     ${
                       relatedQuestions.length
                         ? `<div class="context-section"><h3 class="context-title">关联题目<span>${relatedQuestions.length}</span></h3><div class="knowledge-links">${relatedQuestions.map((question) => `<button class="knowledge-link" type="button" data-action="open-question" data-id="${question.id}"><small>${question.id} · ${escapeHtml(question.type)}</small>${escapeHtml(question.prompt)}</button>`).join("")}</div></div>`

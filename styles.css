@@ -865,6 +865,31 @@ svg {
   overflow-wrap: anywhere;
 }
 
+.key-highlight {
+  padding: 0;
+  color: #087f8c;
+  background: transparent;
+  font-weight: 780;
+  text-decoration-color: rgba(8, 127, 140, 0.32);
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.key-highlight.is-label {
+  color: #087f8c;
+}
+
+.key-highlight.is-data {
+  color: #a85a00;
+  text-decoration-color: rgba(168, 90, 0, 0.34);
+}
+
+.key-highlight.is-rule {
+  color: #c23d4b;
+  text-decoration-color: rgba(194, 61, 75, 0.34);
+}
+
 .answer-points {
   display: grid;
   gap: 7px;
