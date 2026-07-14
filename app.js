@@ -5,7 +5,11 @@
   const root = document.getElementById("view-root");
   const modalRoot = document.getElementById("modal-root");
   const toastElement = document.getElementById("toast");
+  const importInput = document.getElementById("progress-import");
   const STORAGE_KEY = "materials-recall-state-v1";
+  const STATE_VERSION = 2;
+  const VALID_VIEWS = new Set(["study", "bank", "knowledge", "wrong", "stats"]);
+  const DAILY_GOALS = new Set([10, 20, 30, 50]);
 
   if (!DATA || !Array.isArray(DATA.questions)) {
     root.innerHTML = '<div class="empty-state"><h2>题库数据未加载</h2><p>请确认 data.js 与 index.html 位于同一目录。</p></div>';
@@ -18,7 +22,7 @@
   const typeNames = [...new Set(DATA.questions.map((question) => question.type))];
 
   const defaultState = {
-    version: 1,
+    version: STATE_VERSION,
     reviews: {},
     knowledgeReviews: {},
     wrong: [],
@@ -30,6 +34,7 @@
 
   let state = loadState();
   let toastTimer = 0;
+  let modalReturnFocus = null;
   const runtime = {
     view: state.lastView || "study",
     queue: [],
@@ -55,24 +60,71 @@
       currentId: null,
       revealed: false,
     },
-    wrongMode: "all",
+    wrongMode: "mine",
   };
+
+  function freshState() {
+    return {
+      version: STATE_VERSION,
+      reviews: {},
+      knowledgeReviews: {},
+      wrong: [],
+      favorites: [],
+      dailyGoal: 20,
+      history: {},
+      lastView: "study",
+    };
+  }
+
+  function sanitizedReviewMap(value, validIds) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const result = {};
+    for (const [id, review] of Object.entries(value)) {
+      if (!validIds.has(id) || !review || typeof review !== "object" || Array.isArray(review)) continue;
+      const number = (field, fallback = 0, max = 100000) => {
+        const parsed = Number(review[field]);
+        return Number.isFinite(parsed) ? clamp(Math.round(parsed), 0, max) : fallback;
+      };
+      result[id] = {
+        attempts: number("attempts"),
+        level: number("level", 0, 6),
+        interval: number("interval", 0, 3650),
+        correctStreak: number("correctStreak", 0, 100000),
+        wrongCount: number("wrongCount", 0, 100000),
+      };
+      if (typeof review.lastReviewed === "string") result[id].lastReviewed = review.lastReviewed.slice(0, 40);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(review.nextDue || ""))) result[id].nextDue = review.nextDue;
+    }
+    return result;
+  }
+
+  function sanitizeState(saved) {
+    const clean = freshState();
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return clean;
+    clean.reviews = sanitizedReviewMap(saved.reviews, new Set(questionMap.keys()));
+    clean.knowledgeReviews = sanitizedReviewMap(saved.knowledgeReviews, new Set(knowledgeMap.keys()));
+    clean.wrong = [...new Set(Array.isArray(saved.wrong) ? saved.wrong : [])].filter((id) => questionMap.has(id));
+    clean.favorites = [...new Set(Array.isArray(saved.favorites) ? saved.favorites : [])].filter((id) => questionMap.has(id));
+    const goal = Number(saved.dailyGoal);
+    clean.dailyGoal = DAILY_GOALS.has(goal) ? goal : defaultState.dailyGoal;
+    if (saved.history && typeof saved.history === "object" && !Array.isArray(saved.history)) {
+      for (const [day, value] of Object.entries(saved.history)) {
+        const count = Number(value);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(count) && count >= 0) {
+          clean.history[day] = clamp(Math.round(count), 0, 100000);
+        }
+      }
+    }
+    clean.lastView = VALID_VIEWS.has(saved.lastView) ? saved.lastView : defaultState.lastView;
+    return clean;
+  }
 
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-      if (!saved || saved.version !== 1) return structuredClone(defaultState);
-      return {
-        ...structuredClone(defaultState),
-        ...saved,
-        reviews: saved.reviews || {},
-        knowledgeReviews: saved.knowledgeReviews || {},
-        wrong: [...new Set(saved.wrong || [])],
-        favorites: [...new Set(saved.favorites || [])],
-        history: saved.history || {},
-      };
+      return sanitizeState(saved);
     } catch {
-      return structuredClone(defaultState);
+      return freshState();
     }
   }
 
@@ -232,6 +284,8 @@
   }
 
   function setView(view) {
+    window.clearTimeout(toastTimer);
+    toastElement.classList.remove("is-visible");
     runtime.view = view;
     state.lastView = view;
     saveState();
@@ -250,6 +304,72 @@
     toastElement.textContent = message;
     toastElement.classList.add("is-visible");
     toastTimer = window.setTimeout(() => toastElement.classList.remove("is-visible"), 2200);
+  }
+
+  function progressExportPayload() {
+    return {
+      format: "caikeji-progress",
+      formatVersion: 1,
+      contentVersion: DATA.contentVersion || DATA.generatedAt || "unknown",
+      exportedAt: new Date().toISOString(),
+      state: sanitizeState(state),
+    };
+  }
+
+  function downloadProgressFile(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function exportProgress() {
+    const filename = `材科记-学习记录-${dateKey()}.json`;
+    const json = `${JSON.stringify(progressExportPayload(), null, 2)}\n`;
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+    try {
+      if (typeof File === "function" && navigator.share && navigator.canShare) {
+        const file = new File([blob], filename, { type: blob.type });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "材科记学习记录" });
+          showToast("学习记录已导出");
+          return;
+        }
+      }
+      downloadProgressFile(blob, filename);
+      showToast("学习记录已导出");
+    } catch (error) {
+      if (error?.name !== "AbortError") showToast("导出失败，请稍后重试");
+    }
+  }
+
+  async function importProgress(file) {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const rawState = parsed?.format === "caikeji-progress" ? parsed.state : parsed;
+      if (!rawState || typeof rawState !== "object" || Array.isArray(rawState)) throw new Error("invalid state");
+      const incoming = sanitizeState(rawState);
+      const reviewed = Object.keys(incoming.reviews).length;
+      const confirmed = window.confirm(`导入这份学习记录？\n已学习 ${reviewed} 题，错题 ${incoming.wrong.length} 题，收藏 ${incoming.favorites.length} 题。\n当前设备上的学习记录将被替换。`);
+      if (!confirmed) return;
+      state = incoming;
+      saveState();
+      runtime.queue = [];
+      runtime.index = 0;
+      runtime.knowledge.currentId = null;
+      createSession("mixed");
+      setView("stats");
+      showToast("学习记录已导入");
+    } catch {
+      showToast("文件格式不正确，未导入任何记录");
+    } finally {
+      if (importInput) importInput.value = "";
+    }
   }
 
   function totalMastered() {
@@ -272,14 +392,17 @@
 
   function updateShell() {
     document.querySelectorAll(".nav-item").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.view === runtime.view);
+      const active = button.dataset.view === runtime.view;
+      button.classList.toggle("is-active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
     });
     const mastered = totalMastered();
     const percent = Math.round((mastered / DATA.stats.totalQuestions) * 100);
     document.getElementById("sidebar-mastery").textContent = `${percent}%`;
     document.getElementById("sidebar-progress-bar").style.width = `${percent}%`;
     document.getElementById("sidebar-progress-copy").textContent = `${mastered} / ${DATA.stats.totalQuestions}`;
-    document.getElementById("wrong-count").textContent = String(allWrongIds().length);
+    document.getElementById("wrong-count").textContent = String(state.wrong.length);
     document.getElementById("today-count").textContent = String(state.history[dateKey()] || 0);
   }
 
@@ -535,7 +658,7 @@
     const labelByStatus = { covered: "完整覆盖", partial: "部分覆盖", missed: "待补充" };
     return `
       <div class="submission-feedback is-${feedback.tone}">
-        <div class="feedback-heading"><i data-lucide="scan-search"></i><strong>${feedback.tone === "weak" ? "回答错误" : "得分点反馈"}</strong><span>${escapeHtml(feedback.summary)}${feedback.tone === "weak" ? " · 已自动加入错题本" : ""}</span></div>
+        <div class="feedback-heading"><i data-lucide="scan-search"></i><strong>${feedback.tone === "weak" ? "得分点不足" : "得分点反馈"}</strong><span>${escapeHtml(feedback.summary)}${feedback.tone === "weak" ? " · 已自动加入错题本" : ""}</span></div>
         <ul class="feedback-point-list">
           ${feedback.results
             .map(
@@ -790,7 +913,13 @@
     if (addedToWrong) saveState();
     runtime.revealed = true;
     render();
-    if (judgedWrong) showToast(addedToWrong ? "回答错误，已自动加入错题本" : "回答错误，本题已在错题本");
+    window.requestAnimationFrame(() => {
+      root.querySelector(".submission-feedback")?.scrollIntoView({ block: "nearest" });
+    });
+    if (judgedWrong) {
+      const prefix = isObjective(question) ? "回答错误" : "得分点不足";
+      showToast(addedToWrong ? `${prefix}，已自动加入错题本` : `${prefix}，本题已在错题本`);
+    }
   }
 
   function showAnswer() {
@@ -912,11 +1041,13 @@
       if (filters.source === "platform" && question.source !== "平台原题") return false;
       if (filters.source === "subjective" && question.source !== "填空简答专项") return false;
       if (filters.source === "definition" && question.source !== "定义强化专项") return false;
+      if (filters.source === "coverage" && question.source !== "知识点补全专项") return false;
       if (filters.chapter !== "all" && question.chapter !== filters.chapter) return false;
       if (filters.type !== "all" && question.type !== filters.type) return false;
       if (filters.status !== "all" && questionStatus(question.id) !== filters.status) return false;
       if (!search) return true;
-      const haystack = `${question.id} ${question.prompt} ${question.answerText} ${question.tags.join(" ")}`.toLowerCase();
+      const knowledgeNames = question.knowledgeIds.map((id) => knowledgeMap.get(id)?.name || "").join(" ");
+      const haystack = `${question.id} ${question.prompt} ${question.answerText} ${question.tags.join(" ")} ${knowledgeNames}`.toLowerCase();
       return haystack.includes(search);
     });
   }
@@ -955,7 +1086,7 @@
     root.innerHTML = `
       <section class="view-section">
         <header class="section-head">
-          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">平台原题、填空简答专项与定义强化专项统一检索</p></div>
+          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">平台原题、填空简答、定义强化与知识点补全专项统一检索</p></div>
           <button class="primary-button" type="button" data-action="start-filtered"><i data-lucide="play"></i>练习筛选结果</button>
         </header>
         <div class="metric-strip">
@@ -964,18 +1095,20 @@
           <div class="metric-block"><strong>${DATA.stats.fillQuestions}</strong><span>填空专项</span></div>
           <div class="metric-block"><strong>${DATA.stats.shortQuestions}</strong><span>简答与作图</span></div>
           <div class="metric-block"><strong>${DATA.stats.definitionQuestions}</strong><span>定义强化</span></div>
+          <div class="metric-block"><strong>${DATA.stats.coverageQuestions}</strong><span>知识点补全</span></div>
         </div>
         <div class="filter-bar">
-          <label class="search-field"><i data-lucide="search"></i><input id="bank-search" type="search" value="${escapeHtml(runtime.bank.search)}" placeholder="搜索题目、答案或考点"></label>
-          <select class="filter-select" data-filter="source">
+          <label class="search-field"><i data-lucide="search"></i><input id="bank-search" type="search" aria-label="搜索题库" value="${escapeHtml(runtime.bank.search)}" placeholder="搜索题目、答案或考点"></label>
+          <select class="filter-select" data-filter="source" aria-label="按题目来源筛选">
             <option value="all">全部来源</option>
             <option value="platform" ${runtime.bank.source === "platform" ? "selected" : ""}>平台原题</option>
             <option value="subjective" ${runtime.bank.source === "subjective" ? "selected" : ""}>填空简答专项</option>
             <option value="definition" ${runtime.bank.source === "definition" ? "selected" : ""}>定义强化专项</option>
+            <option value="coverage" ${runtime.bank.source === "coverage" ? "selected" : ""}>知识点补全专项</option>
           </select>
-          <select class="filter-select" data-filter="chapter">${selectOptionsHtml(chapterNames, runtime.bank.chapter, "全部章节")}</select>
-          <select class="filter-select" data-filter="type">${selectOptionsHtml(typeNames, runtime.bank.type, "全部题型")}</select>
-          <select class="filter-select" data-filter="status">
+          <select class="filter-select" data-filter="chapter" aria-label="按章节筛选">${selectOptionsHtml(chapterNames, runtime.bank.chapter, "全部章节")}</select>
+          <select class="filter-select" data-filter="type" aria-label="按题型筛选">${selectOptionsHtml(typeNames, runtime.bank.type, "全部题型")}</select>
+          <select class="filter-select" data-filter="status" aria-label="按学习状态筛选">
             <option value="all">全部状态</option>
             <option value="new" ${runtime.bank.status === "new" ? "selected" : ""}>未学习</option>
             <option value="learning" ${runtime.bank.status === "learning" ? "selected" : ""}>学习中</option>
@@ -1002,6 +1135,7 @@
   function openQuestionModal(id) {
     const question = questionMap.get(id);
     if (!question) return;
+    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const favorite = state.favorites.includes(id);
     const options = question.options.length
       ? `<div class="modal-options">${question.options
@@ -1038,11 +1172,15 @@
       </div>`;
     document.body.style.overflow = "hidden";
     refreshIcons();
+    window.requestAnimationFrame(() => modalRoot.querySelector("[data-action='close-modal']")?.focus());
   }
 
   function closeModal() {
+    const returnFocus = modalReturnFocus;
     modalRoot.innerHTML = "";
     document.body.style.overflow = "";
+    modalReturnFocus = null;
+    if (returnFocus?.isConnected) returnFocus.focus();
   }
 
   function knowledgeFiltered() {
@@ -1136,7 +1274,7 @@
             }
           </article>
           <aside class="knowledge-index">
-            <div class="knowledge-index-head"><strong>知识目录</strong><input class="knowledge-search" id="knowledge-search" type="search" value="${escapeHtml(runtime.knowledge.search)}" placeholder="搜索知识点"></div>
+            <div class="knowledge-index-head"><strong>知识目录</strong><input class="knowledge-search" id="knowledge-search" type="search" aria-label="搜索知识点" value="${escapeHtml(runtime.knowledge.search)}" placeholder="搜索知识点"></div>
             <div class="module-tabs">
               <button class="module-tab ${runtime.knowledge.module === "all" ? "is-active" : ""}" type="button" data-action="set-module" data-module="all">全部</button>
               ${DATA.modules.map((module) => `<button class="module-tab ${runtime.knowledge.module === module.name ? "is-active" : ""}" type="button" data-action="set-module" data-module="${escapeHtml(module.name)}">${escapeHtml(compactChapter(module.name))}</button>`).join("")}
@@ -1170,20 +1308,20 @@
     root.innerHTML = `
       <section class="view-section">
         <header class="section-head">
-          <div class="section-title-wrap"><h1 class="section-title">错题本</h1><p class="section-subtitle">我的答错记录与平台历史错题统一归档</p></div>
+          <div class="section-title-wrap"><h1 class="section-title">错题本</h1><p class="section-subtitle">默认只显示当前设备上的个人错题</p></div>
           ${questions.length ? '<button class="primary-button" type="button" data-action="start-wrong"><i data-lucide="refresh-ccw"></i>开始重练</button>' : ""}
         </header>
         <div class="metric-strip">
-          <div class="metric-block"><strong>${allWrongIds().length}</strong><span>全部错题</span></div>
           <div class="metric-block"><strong>${state.wrong.length}</strong><span>我的错题</span></div>
-          <div class="metric-block"><strong>${historicalWrongIds().length}</strong><span>平台历史错题</span></div>
-          <div class="metric-block"><strong>${DATA.questions.filter((question) => question.platformSuspect).length}</strong><span>平台疑点</span></div>
+          <div class="metric-block"><strong>${historicalWrongIds().length}</strong><span>原始纠错题</span></div>
+          <div class="metric-block"><strong>${allWrongIds().length}</strong><span>合并题目</span></div>
+          <div class="metric-block"><strong>${DATA.questions.filter((question) => question.platformSuspect).length}</strong><span>口径提示</span></div>
         </div>
         <div class="segmented" style="margin-bottom:12px">
           ${[
-            ["all", "全部"],
             ["mine", "我的错题"],
-            ["history", "平台历史"],
+            ["all", "全部"],
+            ["history", "原始纠错题"],
           ]
             .map(([mode, label]) => `<button class="segment-button ${runtime.wrongMode === mode ? "is-active" : ""}" type="button" data-action="set-wrong-mode" data-mode="${mode}">${label}</button>`)
             .join("")}
@@ -1230,7 +1368,7 @@
     });
     root.innerHTML = `
       <section class="view-section">
-        <header class="section-head"><div class="section-title-wrap"><h1 class="section-title">学习统计</h1><p class="section-subtitle">本机浏览器中的学习记录</p></div></header>
+        <header class="section-head"><div class="section-title-wrap"><h1 class="section-title">学习统计</h1><p class="section-subtitle">仅保存在当前设备的学习记录</p></div></header>
         <div class="metric-strip">
           <div class="metric-block"><strong>${attempts}</strong><span>累计复习</span></div>
           <div class="metric-block"><strong>${mastered}</strong><span>已掌握题目</span></div>
@@ -1258,6 +1396,16 @@
                 <div class="segmented">${[10, 20, 30, 50].map((goal) => `<button class="segment-button ${state.dailyGoal === goal ? "is-active" : ""}" type="button" data-action="set-goal" data-goal="${goal}">${goal}</button>`).join("")}</div>
               </div>
               <div class="settings-row">
+                <div class="settings-copy"><strong>学习记录备份</strong><small>用于换设备或重装后恢复</small></div>
+                <div class="settings-actions">
+                  <button class="secondary-button is-compact" type="button" data-action="export-progress"><i data-lucide="download"></i>导出</button>
+                  <button class="secondary-button is-compact" type="button" data-action="import-progress"><i data-lucide="upload"></i>导入</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <div class="settings-copy"><strong>题库版本</strong><small>${escapeHtml(DATA.contentVersion || DATA.generatedAt || "未知")} · ${DATA.stats.totalQuestions}题 · ${DATA.knowledge.length}个知识点 · ${DATA.questions.filter((question) => question.platformSuspect).length}题含口径提示</small></div>
+              </div>
+              <div class="settings-row">
                 <div class="settings-copy"><strong>清空学习记录</strong><small>题库内容不会删除</small></div>
                 <button class="danger-button" type="button" data-action="reset-progress"><i data-lucide="trash-2"></i>清空</button>
               </div>
@@ -1281,7 +1429,7 @@
   function resetProgress() {
     const confirmed = window.confirm("清空全部学习进度、错题和收藏记录？");
     if (!confirmed) return;
-    state = structuredClone(defaultState);
+    state = freshState();
     saveState();
     runtime.queue = [];
     runtime.index = 0;
@@ -1367,6 +1515,8 @@
       showToast(`每日题量已设为 ${state.dailyGoal}`);
       render();
     }
+    if (action === "export-progress") void exportProgress();
+    if (action === "import-progress") importInput?.click();
     if (action === "reset-progress") resetProgress();
   });
 
@@ -1421,8 +1571,30 @@
     }
   });
 
+  importInput?.addEventListener("change", () => {
+    void importProgress(importInput.files?.[0]);
+  });
+
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && modalRoot.innerHTML) closeModal();
+    if (event.key === "Escape" && modalRoot.innerHTML) {
+      closeModal();
+      return;
+    }
+    if (event.key === "Tab" && modalRoot.innerHTML) {
+      const focusable = [...modalRoot.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")].filter((element) => !element.disabled);
+      if (focusable.length) {
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      return;
+    }
     if (runtime.view !== "study" || modalRoot.innerHTML) return;
     if (runtime.revealed && ["1", "2", "3"].includes(event.key)) {
       rateCurrentQuestion(Number(event.key) - 1);
@@ -1434,6 +1606,15 @@
   createSession("mixed");
 
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    let refreshingForUpdate = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshingForUpdate) return;
+      refreshingForUpdate = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker
+      .register("./sw.js", { updateViaCache: "none" })
+      .then((registration) => registration.update())
+      .catch(() => {});
   }
 })();

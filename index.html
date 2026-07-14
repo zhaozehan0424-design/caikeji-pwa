@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="材科记">
   <title>材科记 - 材料科学基础题库</title>
-  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="manifest" href="manifest.webmanifest?v=13">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <div class="app-shell">
@@ -49,7 +49,7 @@
           <span>总掌握度</span><strong id="sidebar-mastery">0%</strong>
         </div>
         <div class="progress-track" aria-hidden="true"><span id="sidebar-progress-bar"></span></div>
-        <small id="sidebar-progress-copy">0 / 355</small>
+        <small id="sidebar-progress-copy">0 / 377</small>
       </div>
     </aside>
 
@@ -76,10 +76,11 @@
 
   <div id="modal-root"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <input id="progress-import" type="file" accept="application/json,.json" hidden>
 
-  <script src="data.js"></script>
+  <script src="data.js?v=13"></script>
   <script src="assets/lucide.min.js"></script>
-  <script src="native.js"></script>
-  <script src="app.js"></script>
+  <script src="native.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

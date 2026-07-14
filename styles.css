@@ -726,6 +726,7 @@ svg {
 }
 
 .submission-feedback {
+  scroll-margin-block: 92px;
   margin: 0 0 12px;
   padding: 14px 16px;
   background: var(--surface-soft);
@@ -1119,7 +1120,7 @@ button.queue-item {
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -1652,7 +1653,20 @@ button.queue-item {
 
 .settings-copy small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settings-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.secondary-button.is-compact {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 11px;
 }
 
 .segmented {
@@ -2080,6 +2094,11 @@ button.queue-item {
     align-items: flex-start;
     flex-direction: column;
     padding: 12px 0;
+  }
+
+  .settings-actions,
+  .settings-actions .secondary-button {
+    width: 100%;
   }
 
   .segmented {
