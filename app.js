@@ -1606,9 +1606,10 @@
   createSession("mixed");
 
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    const hadServiceWorkerController = Boolean(navigator.serviceWorker.controller);
     let refreshingForUpdate = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshingForUpdate) return;
+      if (!hadServiceWorkerController || refreshingForUpdate) return;
       refreshingForUpdate = true;
       window.location.reload();
     });

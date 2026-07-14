@@ -4,7 +4,7 @@
   "description": "材料科学基础交互题库、知识背诵与错题复习",
   "lang": "zh-CN",
   "id": "./",
-  "start_url": "./index.html?v=13",
+  "start_url": "./index.html?v=13.1",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
