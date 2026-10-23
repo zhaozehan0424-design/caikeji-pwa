@@ -801,6 +801,25 @@
       </aside>`;
   }
 
+  function studyOverviewHtml() {
+    const reviewedToday = state.history[dateKey()] || 0;
+    const dailyGoal = state.dailyGoal;
+    const completion = Math.min(100, Math.round((reviewedToday / dailyGoal) * 100));
+    return `
+      <div class="study-overview">
+        <div class="study-overview-copy">
+          <span class="study-overview-eyebrow"><span aria-hidden="true"></span> DAILY PRACTICE · 今日学习</span>
+          <strong>把知识，练成直觉。</strong>
+          <p>先独立作答，再对照解析；从这一题开始，稳步推进。</p>
+        </div>
+        <div class="study-overview-progress" aria-label="今日已完成 ${reviewedToday} 题，目标 ${dailyGoal} 题">
+          <span>今日进度</span>
+          <strong>${reviewedToday}<small> / ${dailyGoal}</small></strong>
+          <span class="study-overview-progress-track" aria-hidden="true"><i style="width:${completion}%"></i></span>
+        </div>
+      </div>`;
+  }
+
   function renderStudy() {
     if (!runtime.queue.length) {
       createSession(runtime.queueMode);
@@ -818,6 +837,7 @@
       ? `<div class="option-list">${question.options.map((option) => optionHtml(question, option)).join("")}</div>`
       : `<textarea class="response-input ${question.type.includes("简答") || question.type.includes("作图") || question.type.includes("计算") ? "is-long" : ""}" data-role="draft" placeholder="在此作答" ${runtime.revealed ? "disabled" : ""}>${escapeHtml(runtime.drafts[question.id] || "")}</textarea>`;
     root.innerHTML = `
+      ${studyOverviewHtml()}
       <section class="study-layout">
         <div class="study-column">
           <div class="session-strip">
@@ -859,6 +879,7 @@
   function renderSessionComplete() {
     const total = runtime.sessionStats.forgot + runtime.sessionStats.fuzzy + runtime.sessionStats.mastered;
     root.innerHTML = `
+      ${studyOverviewHtml()}
       <section class="study-layout">
         <div class="study-column">
           <div class="session-complete">

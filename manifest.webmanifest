@@ -4,13 +4,13 @@
   "description": "材料科学基础交互题库、知识背诵与错题复习",
   "lang": "zh-CN",
   "id": "./",
-  "start_url": "./index.html?v=13.1",
+  "start_url": "./index.html?v=13.2",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "categories": ["education"],
-  "background_color": "#eef2f3",
-  "theme_color": "#183d54",
+  "background_color": "#f4f7f4",
+  "theme_color": "#102e37",
   "icons": [
     {
       "src": "assets/icons/icon-192.png",

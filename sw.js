@@ -1,12 +1,12 @@
-const CACHE_NAME = "materials-recall-v13-1";
+const CACHE_NAME = "materials-recall-v13-2";
 const CORE_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=13.1",
-  "./app.js?v=13.1",
-  "./native.js?v=13.1",
-  "./data.js?v=13.1",
-  "./manifest.webmanifest?v=13.1",
+  "./styles.css?v=13.2",
+  "./app.js?v=13.2",
+  "./native.js?v=13.2",
+  "./data.js?v=13.2",
+  "./manifest.webmanifest?v=13.2",
   "./robots.txt",
   "./assets/lucide.min.js",
   "./assets/icons/icon-192.png",
