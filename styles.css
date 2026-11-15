@@ -866,6 +866,47 @@ svg {
   overflow-wrap: anywhere;
 }
 
+/* Readable handwritten-style notation for the compact source formulas. */
+.question-prompt sub,
+.question-prompt sup,
+.answer-text sub,
+.answer-text sup,
+.answer-points sub,
+.answer-points sup,
+.knowledge-notes sub,
+.knowledge-notes sup,
+.modal-prompt sub,
+.modal-prompt sup,
+.modal-option sub,
+.modal-option sup {
+  font-family: "Cambria Math", "STIX Two Math", "Times New Roman", serif;
+  font-style: italic;
+}
+
+.question-prompt sub,
+.answer-text sub,
+.answer-points sub,
+.knowledge-notes sub,
+.modal-prompt sub,
+.modal-option sub {
+  font-size: 0.76em;
+  vertical-align: baseline;
+  position: relative;
+  top: 0.28em;
+}
+
+.question-prompt sup,
+.answer-text sup,
+.answer-points sup,
+.knowledge-notes sup,
+.modal-prompt sup,
+.modal-option sup {
+  font-size: 0.76em;
+  vertical-align: baseline;
+  position: relative;
+  top: -0.38em;
+}
+
 .key-highlight {
   padding: 0;
   color: #087f8c;
@@ -1480,9 +1521,17 @@ button.queue-item {
 }
 
 .point-code {
+  display: grid;
+  gap: 2px;
   color: var(--muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.point-code small {
+  color: var(--teal);
+  font-size: 9px;
+  font-weight: 750;
 }
 
 .point-name {

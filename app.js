@@ -146,7 +146,20 @@
   }
 
   function textHtml(value) {
-    return escapeHtml(value).replaceAll("\n", "<br>");
+    return notationHtml(value).replaceAll("\n", "<br>");
+  }
+
+  // The source notes use a compact TeX-like notation (for example E_{L} and
+  // l_{c}).  Render only the sub/superscript markers as HTML so the learner
+  // sees the same notation they would write by hand instead of braces and
+  // underscores.  The content is escaped before the small, fixed replacements
+  // are applied, so this cannot create markup from the answer text.
+  function notationHtml(value) {
+    return escapeHtml(value)
+      .replace(/_\{([^{}]+)\}/g, "<sub>$1</sub>")
+      .replace(/\^\{([^{}]+)\}/g, "<sup>$1</sup>")
+      .replace(/_([A-Za-z0-9]+)/g, "<sub>$1</sub>")
+      .replace(/\^([A-Za-z0-9]+)/g, "<sup>$1</sup>");
   }
 
   function clamp(value, min, max) {
@@ -168,11 +181,12 @@
   }
 
   function shortChapter(chapter) {
-    if (chapter === "绪论") return chapter;
-    return chapter.replace(/^第([一二三四五六七八九十]+)章\s*/, "第$1章 ");
+    return chapter;
   }
 
   function compactChapter(chapter) {
+    const part = chapter.match(/^(第一部分|第二部分|第三部分|第四部分|第五部分)/);
+    if (part) return part[1];
     if (chapter === "绪论") return chapter;
     const match = chapter.match(/^(第[一二三四五六七八九十]+章)/);
     return match ? match[1] : chapter;
@@ -231,9 +245,15 @@
   }
 
   function sourceMatch(question, mode) {
-    if (mode === "original") return question.source === "平台原题";
-    if (mode === "subjective") return question.source === "填空简答专项";
-    if (mode === "definition") return question.source === "定义强化专项";
+    const chapterByMode = {
+      basics: "第一部分 基础概念与总体设计",
+      pmc: "第二部分 聚合物基复合材料 PMC",
+      interface: "第三部分 复合材料界面",
+      cmc: "第四部分 陶瓷基复合材料 CMC",
+      mmc: "第五部分 金属基复合材料 MMC",
+    };
+    if (mode === "pass") return question.priority === "P1";
+    if (chapterByMode[mode]) return question.chapter === chapterByMode[mode];
     return true;
   }
 
@@ -328,14 +348,14 @@
   }
 
   async function exportProgress() {
-    const filename = `材科记-学习记录-${dateKey()}.json`;
+    const filename = `复材记-学习记录-${dateKey()}.json`;
     const json = `${JSON.stringify(progressExportPayload(), null, 2)}\n`;
     const blob = new Blob([json], { type: "application/json;charset=utf-8" });
     try {
       if (typeof File === "function" && navigator.share && navigator.canShare) {
         const file = new File([blob], filename, { type: blob.type });
         if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: "材科记学习记录" });
+          await navigator.share({ files: [file], title: "复材记学习记录" });
           showToast("学习记录已导出");
           return;
         }
@@ -362,7 +382,7 @@
       runtime.queue = [];
       runtime.index = 0;
       runtime.knowledge.currentId = null;
-      createSession("mixed");
+      createSession("pass");
       setView("stats");
       showToast("学习记录已导入");
     } catch {
@@ -589,17 +609,17 @@
     let match = pattern.exec(source);
     while (match) {
       const token = match[0];
-      result += escapeHtml(source.slice(cursor, match.index));
+      result += notationHtml(source.slice(cursor, match.index));
       let className = "is-term";
       if (formulaSet.has(token.toLowerCase())) className = "is-data";
       else if (ruleSet.has(token)) className = "is-rule";
       else if (labelSet.has(token)) className = "is-label";
       else if (/\d|[=≈<>→]/.test(token)) className = "is-data";
-      result += `<mark class="key-highlight ${className}">${escapeHtml(token)}</mark>`;
+      result += `<mark class="key-highlight ${className}">${notationHtml(token)}</mark>`;
       cursor = match.index + token.length;
       match = pattern.exec(source);
     }
-    result += escapeHtml(source.slice(cursor));
+    result += notationHtml(source.slice(cursor));
     return result.replaceAll("\n", "<br>");
   }
 
@@ -757,10 +777,13 @@
           <h2 class="context-title">学习范围<span>${DATA.stats.totalQuestions}题</span></h2>
           <div class="segmented">
             ${[
+              ["pass", "及格冲刺"],
               ["mixed", "混合"],
-              ["original", "原题"],
-              ["subjective", "专项"],
-              ["definition", "定义"],
+              ["basics", "基础"],
+              ["pmc", "PMC"],
+              ["interface", "界面"],
+              ["cmc", "CMC"],
+              ["mmc", "MMC"],
             ]
               .map(
                 ([mode, label]) => `<button class="segment-button ${runtime.queueMode === mode ? "is-active" : ""}" type="button" data-action="set-session-mode" data-mode="${mode}">${label}</button>`,
@@ -805,12 +828,19 @@
     const reviewedToday = state.history[dateKey()] || 0;
     const dailyGoal = state.dailyGoal;
     const completion = Math.min(100, Math.round((reviewedToday / dailyGoal) * 100));
+    const examDate = DATA.exam?.date ? new Date(DATA.exam.date) : null;
+    const remainingDays = examDate && Number.isFinite(examDate.getTime())
+      ? Math.max(0, Math.ceil((examDate.getTime() - Date.now()) / 86400000))
+      : null;
+    const examText = DATA.exam?.label
+      ? `${DATA.exam.label}${remainingDays === null ? "" : ` · 还有约 ${remainingDays} 天`}`
+      : "及格冲刺";
     return `
       <div class="study-overview">
         <div class="study-overview-copy">
-          <span class="study-overview-eyebrow"><span aria-hidden="true"></span> DAILY PRACTICE · 今日学习</span>
-          <strong>把知识，练成直觉。</strong>
-          <p>先独立作答，再对照解析；从这一题开始，稳步推进。</p>
+          <span class="study-overview-eyebrow"><span aria-hidden="true"></span> EXAM SPRINT · ${escapeHtml(examText)}</span>
+          <strong>先背必考骨架，再做题巩固。</strong>
+          <p>默认优先 P1 必背内容；掌握后再用完整题库查漏补缺。</p>
         </div>
         <div class="study-overview-progress" aria-label="今日已完成 ${reviewedToday} 题，目标 ${dailyGoal} 题">
           <span>今日进度</span>
@@ -1059,10 +1089,10 @@
     const filters = runtime.bank;
     const search = filters.search.trim().toLowerCase();
     return DATA.questions.filter((question) => {
-      if (filters.source === "platform" && question.source !== "平台原题") return false;
-      if (filters.source === "subjective" && question.source !== "填空简答专项") return false;
-      if (filters.source === "definition" && question.source !== "定义强化专项") return false;
-      if (filters.source === "coverage" && question.source !== "知识点补全专项") return false;
+      if (filters.source === "pass" && question.priority !== "P1") return false;
+      if (filters.source === "core" && question.id[0] !== "C") return false;
+      if (filters.source === "truefalse" && question.type !== "判断题") return false;
+      if (filters.source === "multiple" && question.type !== "单选题") return false;
       if (filters.chapter !== "all" && question.chapter !== filters.chapter) return false;
       if (filters.type !== "all" && question.type !== filters.type) return false;
       if (filters.status !== "all" && questionStatus(question.id) !== filters.status) return false;
@@ -1107,25 +1137,25 @@
     root.innerHTML = `
       <section class="view-section">
         <header class="section-head">
-          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">平台原题、填空简答、定义强化与知识点补全专项统一检索</p></div>
+          <div class="section-title-wrap"><h1 class="section-title">全量题库</h1><p class="section-subtitle">核心简答、判断巩固与单选巩固统一检索</p></div>
           <button class="primary-button" type="button" data-action="start-filtered"><i data-lucide="play"></i>练习筛选结果</button>
         </header>
         <div class="metric-strip">
           <div class="metric-block"><strong>${DATA.stats.totalQuestions}</strong><span>总题数</span></div>
-          <div class="metric-block"><strong>${DATA.stats.originalQuestions}</strong><span>平台原题</span></div>
-          <div class="metric-block"><strong>${DATA.stats.fillQuestions}</strong><span>填空专项</span></div>
-          <div class="metric-block"><strong>${DATA.stats.shortQuestions}</strong><span>简答与作图</span></div>
-          <div class="metric-block"><strong>${DATA.stats.definitionQuestions}</strong><span>定义强化</span></div>
-          <div class="metric-block"><strong>${DATA.stats.coverageQuestions}</strong><span>知识点补全</span></div>
+          <div class="metric-block"><strong>${DATA.stats.passCoreQuestions}</strong><span>P1必背核心</span></div>
+          <div class="metric-block"><strong>${DATA.stats.coreQuestions}</strong><span>核心简答</span></div>
+          <div class="metric-block"><strong>${DATA.stats.trueFalseQuestions}</strong><span>判断巩固</span></div>
+          <div class="metric-block"><strong>${DATA.stats.multipleChoiceQuestions}</strong><span>选择巩固</span></div>
+          <div class="metric-block"><strong>${DATA.knowledge.length}</strong><span>背诵知识点</span></div>
         </div>
         <div class="filter-bar">
           <label class="search-field"><i data-lucide="search"></i><input id="bank-search" type="search" aria-label="搜索题库" value="${escapeHtml(runtime.bank.search)}" placeholder="搜索题目、答案或考点"></label>
           <select class="filter-select" data-filter="source" aria-label="按题目来源筛选">
             <option value="all">全部来源</option>
-            <option value="platform" ${runtime.bank.source === "platform" ? "selected" : ""}>平台原题</option>
-            <option value="subjective" ${runtime.bank.source === "subjective" ? "selected" : ""}>填空简答专项</option>
-            <option value="definition" ${runtime.bank.source === "definition" ? "selected" : ""}>定义强化专项</option>
-            <option value="coverage" ${runtime.bank.source === "coverage" ? "selected" : ""}>知识点补全专项</option>
+            <option value="pass" ${runtime.bank.source === "pass" ? "selected" : ""}>P1必背</option>
+            <option value="core" ${runtime.bank.source === "core" ? "selected" : ""}>核心简答</option>
+            <option value="truefalse" ${runtime.bank.source === "truefalse" ? "selected" : ""}>判断巩固</option>
+            <option value="multiple" ${runtime.bank.source === "multiple" ? "selected" : ""}>选择巩固</option>
           </select>
           <select class="filter-select" data-filter="chapter" aria-label="按章节筛选">${selectOptionsHtml(chapterNames, runtime.bank.chapter, "全部章节")}</select>
           <select class="filter-select" data-filter="type" aria-label="按题型筛选">${selectOptionsHtml(typeNames, runtime.bank.type, "全部题型")}</select>
@@ -1244,7 +1274,7 @@
         const review = reviewOf(point.id, true);
         const local = review ? `L${review.level || 0}` : "未学";
         return `<button class="point-row ${runtime.knowledge.currentId === point.id ? "is-active" : ""}" type="button" data-action="select-knowledge" data-id="${point.id}">
-          <span class="point-code">${point.id}</span>
+          <span class="point-code">${point.id}<small>${escapeHtml(point.priorityLabel || "重点")}</small></span>
           <span class="point-name">${escapeHtml(point.name)}</span>
           <span class="point-mastery">${local}</span>
         </button>`;
@@ -1267,11 +1297,11 @@
     root.innerHTML = `
       <section class="view-section">
         <header class="section-head">
-          <div class="section-title-wrap"><h1 class="section-title">知识背诵</h1><p class="section-subtitle">97项课程知识目录 · 主动回忆与分级复习</p></div>
+          <div class="section-title-wrap"><h1 class="section-title">知识背诵</h1><p class="section-subtitle">${DATA.knowledge.length}项复合材料知识目录 · 主动回忆与分级复习</p></div>
         </header>
         <div class="knowledge-layout">
           <article class="knowledge-card">
-            <div class="knowledge-card-head"><span>${escapeHtml(point.id)} · ${escapeHtml(point.unit || compactChapter(point.module))}</span><strong>${pointIndex + 1} / ${points.length}</strong></div>
+            <div class="knowledge-card-head"><span>${escapeHtml(point.id)} · ${escapeHtml(point.priorityLabel || "重点")} · ${escapeHtml(point.unit || compactChapter(point.module))}</span><strong>${pointIndex + 1} / ${points.length}</strong></div>
             <div class="knowledge-term"><small>${escapeHtml(shortChapter(point.module))}</small><h2>${escapeHtml(point.name)}</h2></div>
             ${
               runtime.knowledge.revealed
@@ -1283,7 +1313,7 @@
                         : ""
                     }
                     <div class="knowledge-card-actions">
-                      <span class="section-subtitle">平台掌握度 ${point.mastery ?? "未知"}%</span>
+                      <span class="section-subtitle">当前掌握度 ${point.mastery ?? "未知"}%</span>
                       <div class="rating-buttons">
                         <button class="rating-button is-forgot" type="button" data-action="rate-knowledge" data-rating="0">忘记</button>
                         <button class="rating-button is-fuzzy" type="button" data-action="rate-knowledge" data-rating="1">模糊</button>
@@ -1291,7 +1321,7 @@
                       </div>
                     </div>
                   </div>`
-                : `<div class="knowledge-card-actions"><span class="section-subtitle">平台掌握度 ${point.mastery ?? "未知"}%</span><button class="primary-button" type="button" data-action="reveal-knowledge"><i data-lucide="eye"></i>查看考点</button></div>`
+                : `<div class="knowledge-card-actions"><span class="section-subtitle">当前掌握度 ${point.mastery ?? "未知"}%</span><button class="primary-button" type="button" data-action="reveal-knowledge"><i data-lucide="eye"></i>查看考点</button></div>`
             }
           </article>
           <aside class="knowledge-index">
@@ -1395,6 +1425,7 @@
           <div class="metric-block"><strong>${mastered}</strong><span>已掌握题目</span></div>
           <div class="metric-block"><strong>${state.wrong.length}</strong><span>当前错题</span></div>
           <div class="metric-block"><strong>${streakDays()}</strong><span>连续学习天数</span></div>
+          <div class="metric-block"><strong>${DATA.stats.passCoreQuestions}</strong><span>P1必背核心</span></div>
         </div>
         <div class="stats-grid">
           <div class="panel">
@@ -1424,7 +1455,7 @@
                 </div>
               </div>
               <div class="settings-row">
-                <div class="settings-copy"><strong>题库版本</strong><small>${escapeHtml(DATA.contentVersion || DATA.generatedAt || "未知")} · ${DATA.stats.totalQuestions}题 · ${DATA.knowledge.length}个知识点 · ${DATA.questions.filter((question) => question.platformSuspect).length}题含口径提示</small></div>
+                <div class="settings-copy"><strong>题库版本</strong><small>${escapeHtml(DATA.contentVersion || DATA.generatedAt || "未知")} · P1必背 ${DATA.stats.passCoreQuestions}项 · ${DATA.stats.totalQuestions}题（${DATA.stats.coreQuestions}道核心问答 + ${DATA.stats.trueFalseQuestions}道判断 + ${DATA.stats.multipleChoiceQuestions}道选择） · ${DATA.knowledge.length}个知识点</small></div>
               </div>
               <div class="settings-row">
                 <div class="settings-copy"><strong>清空学习记录</strong><small>题库内容不会删除</small></div>
@@ -1456,7 +1487,7 @@
     runtime.index = 0;
     runtime.knowledge.currentId = null;
     showToast("学习记录已清空");
-    createSession("mixed");
+    createSession("pass");
     setView("stats");
   }
 
@@ -1624,7 +1655,7 @@
     if (!runtime.revealed && event.key === "Enter" && event.target.matches("textarea") && (event.ctrlKey || event.metaKey)) revealAnswer();
   });
 
-  createSession("mixed");
+  createSession("pass");
 
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     const hadServiceWorkerController = Boolean(navigator.serviceWorker.controller);
