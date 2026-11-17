@@ -1,4 +1,4 @@
-const CACHE_NAME = "composite-recall-v1";
+const CACHE_NAME = "composite-recall-v2";
 const CORE_FILES = [
   "./",
   "./index.html",
@@ -11,6 +11,8 @@ const CORE_FILES = [
   "./assets/icons/icon-192.png",
   "./assets/icons/icon-512.png",
   "./assets/icons/apple-touch-icon.png",
+  "./assets/classroom-board.jpg",
+  "./assets/classroom-board-rectified.png",
 ];
 
 const UPDATE_FIRST_FILES = new Set([

@@ -8,7 +8,7 @@
   const importInput = document.getElementById("progress-import");
   const STORAGE_KEY = "materials-recall-state-v1";
   const STATE_VERSION = 2;
-  const VALID_VIEWS = new Set(["study", "bank", "knowledge", "wrong", "stats"]);
+  const VALID_VIEWS = new Set(["study", "bank", "knowledge", "board", "wrong", "stats"]);
   const DAILY_GOALS = new Set([10, 20, 30, 50]);
 
   if (!DATA || !Array.isArray(DATA.questions)) {
@@ -431,6 +431,7 @@
     if (runtime.view === "study") renderStudy();
     if (runtime.view === "bank") renderBank();
     if (runtime.view === "knowledge") renderKnowledge();
+    if (runtime.view === "board") renderBoard();
     if (runtime.view === "wrong") renderWrong();
     if (runtime.view === "stats") renderStats();
     refreshIcons();
@@ -829,11 +830,16 @@
     const dailyGoal = state.dailyGoal;
     const completion = Math.min(100, Math.round((reviewedToday / dailyGoal) * 100));
     const examDate = DATA.exam?.date ? new Date(DATA.exam.date) : null;
-    const remainingDays = examDate && Number.isFinite(examDate.getTime())
-      ? Math.max(0, Math.ceil((examDate.getTime() - Date.now()) / 86400000))
+    const remainingMinutes = examDate && Number.isFinite(examDate.getTime())
+      ? Math.max(0, Math.ceil((examDate.getTime() - Date.now()) / 60000))
       : null;
+    const countdown = remainingMinutes === null ? ""
+      : remainingMinutes === 0 ? "已到考试时间"
+      : remainingMinutes < 1440
+        ? `距考试 ${Math.floor(remainingMinutes / 60)} 小时 ${remainingMinutes % 60} 分钟`
+        : `还有约 ${Math.ceil(remainingMinutes / 1440)} 天`;
     const examText = DATA.exam?.label
-      ? `${DATA.exam.label}${remainingDays === null ? "" : ` · 还有约 ${remainingDays} 天`}`
+      ? `${DATA.exam.label}${countdown ? ` · ${countdown}` : ""}`
       : "及格冲刺";
     return `
       <div class="study-overview">
@@ -1223,7 +1229,7 @@
       </div>`;
     document.body.style.overflow = "hidden";
     refreshIcons();
-    window.requestAnimationFrame(() => modalRoot.querySelector("[data-action='close-modal']")?.focus());
+    window.requestAnimationFrame(() => modalRoot.querySelector("button[data-action='close-modal']")?.focus());
   }
 
   function closeModal() {
@@ -1232,6 +1238,94 @@
     document.body.style.overflow = "";
     modalReturnFocus = null;
     if (returnFocus?.isConnected) returnFocus.focus();
+  }
+
+  function openBoardImage(src, title) {
+    if (!src) return;
+    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop board-lightbox-backdrop" data-action="close-modal">
+        <section class="board-lightbox" role="dialog" aria-modal="true" aria-labelledby="board-lightbox-title">
+          <header class="modal-header">
+            <strong id="board-lightbox-title">${escapeHtml(title || "课堂板书图片")}</strong>
+            <button class="icon-button" type="button" data-action="close-modal" title="关闭大图" aria-label="关闭大图"><i data-lucide="x"></i></button>
+          </header>
+          <div class="board-lightbox-body">
+            <img src="${escapeHtml(src)}" alt="${escapeHtml(title || "课堂板书图片")}" />
+          </div>
+          <footer class="board-lightbox-footer">
+            <button class="secondary-button is-compact" type="button" data-action="toggle-board-size" aria-pressed="false">按原尺寸放大</button>
+            <span>放大后可横向、纵向滑动查看 · Esc 关闭</span>
+          </footer>
+        </section>
+      </div>`;
+    document.body.style.overflow = "hidden";
+    refreshIcons();
+    window.requestAnimationFrame(() => modalRoot.querySelector("button[data-action='close-modal']")?.focus());
+  }
+
+  function renderBoard() {
+    root.innerHTML = `
+      <section class="view-section board-view">
+        <header class="section-head">
+          <div class="section-title-wrap">
+            <h1 class="section-title">课堂板书</h1>
+            <p class="section-subtitle">保留原图与透视校正版，先核对手写内容，再整理进正式题库</p>
+          </div>
+          <span class="board-review-badge"><i data-lucide="scan-search"></i>待核对板书</span>
+        </header>
+
+        <div class="board-layout">
+          <div class="board-visuals">
+            <article class="board-card board-card-primary">
+              <div class="board-card-head">
+                <div><span class="board-eyebrow">建议优先查看</span><h2>透视校正版</h2></div>
+                <span class="board-format">1800 × 700</span>
+              </div>
+              <button class="board-image-button" type="button" data-action="open-board-image" data-image-src="assets/classroom-board-rectified.png" data-image-title="课堂板书 · 透视校正版">
+                <img src="assets/classroom-board-rectified.png" alt="课堂黑板透视校正版" width="1800" height="700" loading="eager" />
+                <span class="board-image-hint"><i data-lucide="maximize-2"></i>点击放大</span>
+              </button>
+              <p class="board-caption">已把黑板四角拉正，适合逐列看表格和手写编号；清晰度仍受原照片分辨率限制。</p>
+            </article>
+
+            <article class="board-card">
+              <div class="board-card-head">
+                <div><span class="board-eyebrow">原始记录</span><h2>课堂原图</h2></div>
+                <span class="board-format">1706 × 1279</span>
+              </div>
+              <button class="board-image-button board-image-button-original" type="button" data-action="open-board-image" data-image-src="assets/classroom-board.jpg" data-image-title="课堂板书 · 原始照片">
+                <img src="assets/classroom-board.jpg" alt="课堂黑板原始照片" width="1706" height="1279" loading="lazy" />
+                <span class="board-image-hint"><i data-lucide="maximize-2"></i>点击放大</span>
+              </button>
+              <p class="board-caption">原图用于确认黑板所在位置和被讲台、人物遮挡的区域。</p>
+            </article>
+          </div>
+
+          <aside class="board-notes">
+            <article class="board-note-card is-confirmed">
+              <div class="board-note-title"><i data-lucide="check-circle-2"></i><h2>目前能确认的内容</h2></div>
+              <ul>
+                <li>左侧能读到“聚合物基（PMC）”“金属基（MMC）”。</li>
+                <li>板书按列组织为表格，可用于对照复习。</li>
+                <li>中右部可见①～⑤编号，文字条目仍待核对。</li>
+              </ul>
+            </article>
+
+            <article class="board-note-card is-pending">
+              <div class="board-note-title"><i data-lucide="message-circle-question"></i><h2>需要你核对的内容</h2></div>
+              <ul>
+                <li><strong>左下类别：</strong>被遮挡的名称是否确实是“陶瓷基（CMC）”？</li>
+                <li><strong>标题与表头：</strong>顶部标题及各列表头的逐字原文待核对。</li>
+                <li><strong>中部缩写：</strong>手写英文字母及对应条目待核对，暂未转录。</li>
+                <li><strong>右侧编号条目：</strong>列表的具体文字待核对；只有编号、没有文字的位置也请确认。</li>
+              </ul>
+            </article>
+
+            <div class="board-check-tip"><i data-lucide="info"></i><span>可按“表头：……；左下：……；编号：……”核对原文。确认后再整理为简答、判断、选择和背诵卡片。</span></div>
+          </aside>
+        </div>
+      </section>`;
   }
 
   function knowledgeFiltered() {
@@ -1514,6 +1608,7 @@
     if (action === "restart-session") createSession(runtime.queueMode);
     if (action === "set-session-mode") createSession(target.dataset.mode);
     if (action === "open-question") openQuestionModal(target.dataset.id);
+    if (action === "open-board-image") openBoardImage(target.dataset.imageSrc, target.dataset.imageTitle);
     if (action === "load-more") {
       runtime.bank.limit += 60;
       updateBankResults();
@@ -1608,6 +1703,12 @@
     const target = event.target.closest("[data-action]");
     if (!target) return;
     if (target.dataset.action === "close-modal" && (target === event.target || target.closest(".icon-button"))) closeModal();
+    if (target.dataset.action === "toggle-board-size") {
+      const body = modalRoot.querySelector(".board-lightbox-body");
+      const originalSize = body.classList.toggle("is-original-size");
+      target.setAttribute("aria-pressed", String(originalSize));
+      target.textContent = originalSize ? "适应屏幕" : "按原尺寸放大";
+    }
     if (target.dataset.action === "practice-question") {
       const id = target.dataset.id;
       closeModal();
